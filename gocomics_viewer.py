@@ -16,6 +16,7 @@ IMAGE_DIR = "downloaded_comics"
 
 class ComicScraper:
     def __init__(self, base_url: str):
+        # base_url is the series url, e.g. https://www.gocomics.com/pearlsbeforeswine
         self.base_url = base_url.rstrip("/")
         if not os.path.exists(IMAGE_DIR):
             os.makedirs(IMAGE_DIR)
@@ -37,17 +38,21 @@ class ComicScraper:
             return u
         if u.startswith("/"):
             return "https://www.gocomics.com" + u
+        # relative path like "pearlsbeforeswine/2025/12/09"
         return "https://www.gocomics.com/" + u.lstrip("/")
 
     def parse_comic(self, html: str):
         soup = BeautifulSoup(html, "html.parser")
 
+        # --- Find comic image -------------------------------------------------
         img_url = None
 
+        # 1) Most reliable: OpenGraph image meta
         og_img = soup.find("meta", attrs={"property": "og:image"})
         if og_img and og_img.get("content"):
             img_url = og_img["content"]
 
+        # 2) Fallback: any <img> whose src looks like a GoComics strip image
         if not img_url:
             img_tag = soup.find(
                 "img",
@@ -58,9 +63,11 @@ class ComicScraper:
             if img_tag and img_tag.get("src"):
                 img_url = img_tag["src"]
 
+        # --- Find navigation links (prev / next) -----------------------------
         prev_url = None
         next_url = None
 
+        # 1) Try rel="prev"/"next" links
         link_prev = soup.find("a", rel=lambda v: v and "prev" in v.lower())
         link_next = soup.find("a", rel=lambda v: v and "next" in v.lower())
 
@@ -69,6 +76,7 @@ class ComicScraper:
         if link_next and link_next.get("href"):
             next_url = link_next["href"]
 
+        # 2) Fallback: anchors whose text is "Previous"/"Next"
         if not (prev_url and next_url):
             for a in soup.find_all("a"):
                 text = a.get_text(strip=True).lower()
@@ -81,6 +89,7 @@ class ComicScraper:
                 if prev_url and next_url:
                     break
 
+        # Normalise to absolute URLs
         prev_url = self._abs_url(prev_url)
         next_url = self._abs_url(next_url)
 
